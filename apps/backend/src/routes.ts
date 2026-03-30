@@ -8,15 +8,17 @@ import {
   createLeadNote,
   createSearchRun,
   finalizeSearchRun,
+  getClientsOverview,
   getLeadDetail,
   getLeadMetricsOverview,
+  listClients,
   listLeadNotes,
   listLeads,
   listLeadStatusHistory,
   persistLeadCandidates,
   updateLeadStatus,
 } from "@/lib/leads/repository";
-import { leadStatuses } from "@/lib/leads/status";
+import { crmLeadStatuses, leadStatuses } from "@/lib/leads/status";
 import {
   getPlaceDetails,
   mapPlaceToLeadCandidate,
@@ -34,6 +36,24 @@ const listLeadsQuerySchema = z.object({
   city: z.string().trim().min(1).optional(),
   rubroComercial: z.string().trim().min(1).optional(),
   status: z.enum(leadStatuses).optional(),
+  onlyWithoutWebsite: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => value === "true"),
+  onlyWithPhone: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((value) => value === "true"),
+  sortBy: z.enum(leadSortBy).default("updated_at"),
+  sortDir: z.enum(sortDirection).default("desc"),
+});
+
+const listClientsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(12),
+  city: z.string().trim().min(1).optional(),
+  rubroComercial: z.string().trim().min(1).optional(),
+  status: z.enum(crmLeadStatuses).optional(),
   onlyWithoutWebsite: z
     .enum(["true", "false"])
     .optional()
@@ -146,7 +166,7 @@ export function buildV1Router() {
         pageSize: payload.pageSize,
         city: payload.city,
         rubroComercial: payload.rubroComercial,
-        status: payload.status,
+        status: payload.status ?? "nuevo",
         onlyWithoutWebsite: payload.onlyWithoutWebsite,
         onlyWithPhone: payload.onlyWithPhone,
         sortBy: payload.sortBy,
@@ -166,6 +186,48 @@ export function buildV1Router() {
       }
 
       return sendInternalError(res, "Failed to list leads", error);
+    }
+  });
+
+  router.get("/clients", async (req, res) => {
+    try {
+      const payload = listClientsQuerySchema.parse({
+        page: req.query.page,
+        pageSize: req.query.pageSize,
+        city: req.query.city,
+        rubroComercial: req.query.rubroComercial,
+        status: req.query.status,
+        onlyWithoutWebsite: req.query.onlyWithoutWebsite,
+        onlyWithPhone: req.query.onlyWithPhone,
+        sortBy: req.query.sortBy,
+        sortDir: req.query.sortDir,
+      });
+
+      const result = await listClients({
+        page: payload.page,
+        pageSize: payload.pageSize,
+        city: payload.city,
+        rubroComercial: payload.rubroComercial,
+        status: payload.status,
+        onlyWithoutWebsite: payload.onlyWithoutWebsite,
+        onlyWithPhone: payload.onlyWithPhone,
+        sortBy: payload.sortBy,
+        sortDir: payload.sortDir,
+      });
+
+      return res.status(200).json({
+        page: result.page,
+        pageSize: result.pageSize,
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / result.pageSize)),
+        leads: result.rows,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return sendZodError(res, "Invalid query params", error);
+      }
+
+      return sendInternalError(res, "Failed to list clients", error);
     }
   });
 
@@ -352,6 +414,15 @@ export function buildV1Router() {
       return res.status(200).json(metrics);
     } catch (error) {
       return sendInternalError(res, "Failed to load metrics overview", error);
+    }
+  });
+
+  router.get("/clients/overview", async (_req, res) => {
+    try {
+      const metrics = await getClientsOverview();
+      return res.status(200).json(metrics);
+    } catch (error) {
+      return sendInternalError(res, "Failed to load clients overview", error);
     }
   });
 

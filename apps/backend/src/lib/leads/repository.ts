@@ -107,6 +107,7 @@ type ListLeadsInput = {
   city?: string;
   rubroComercial?: string;
   status?: LeadStatus;
+  excludeStatus?: LeadStatus;
   onlyWithoutWebsite?: boolean;
   onlyWithPhone?: boolean;
   sortBy: ListLeadsSortBy;
@@ -175,6 +176,16 @@ type LeadMetricsOverview = {
   enrichmentDone: number;
   enrichmentFailed: number;
   statusContactado: number;
+};
+
+type ClientsOverview = {
+  totalClients: number;
+  revisado: number;
+  contactado: number;
+  respondio: number;
+  enProceso: number;
+  descartado: number;
+  ganado: number;
 };
 
 export type LeadDetailContact = {
@@ -478,6 +489,8 @@ export async function listLeads(input: ListLeadsInput): Promise<ListLeadsResult>
 
   if (input.status) {
     query = query.eq("status", input.status);
+  } else if (input.excludeStatus) {
+    query = query.neq("status", input.excludeStatus);
   }
 
   if (input.onlyWithoutWebsite) {
@@ -502,6 +515,13 @@ export async function listLeads(input: ListLeadsInput): Promise<ListLeadsResult>
     page: input.page,
     pageSize: input.pageSize,
   };
+}
+
+export async function listClients(input: Omit<ListLeadsInput, "excludeStatus">): Promise<ListLeadsResult> {
+  return listLeads({
+    ...input,
+    excludeStatus: "nuevo",
+  });
 }
 
 export async function updateLeadStatus(
@@ -666,6 +686,50 @@ export async function getLeadMetricsOverview(): Promise<LeadMetricsOverview> {
     enrichmentDone: enrichmentDone.count ?? 0,
     enrichmentFailed: enrichmentFailed.count ?? 0,
     statusContactado: statusContactado.count ?? 0,
+  };
+}
+
+export async function getClientsOverview(): Promise<ClientsOverview> {
+  const supabase = createServiceRoleClient();
+
+  const [revisado, contactado, respondio, enProceso, descartado, ganado] = await Promise.all([
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "revisado"),
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "contactado"),
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "respondio"),
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "en_proceso"),
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "descartado"),
+    supabase.from("leads").select("id", { count: "exact", head: true }).eq("status", "ganado"),
+  ]);
+
+  const results = [
+    { key: "revisado" as const, value: revisado },
+    { key: "contactado" as const, value: contactado },
+    { key: "respondio" as const, value: respondio },
+    { key: "enProceso" as const, value: enProceso },
+    { key: "descartado" as const, value: descartado },
+    { key: "ganado" as const, value: ganado },
+  ];
+
+  for (const result of results) {
+    if (result.value.error) {
+      throw new Error(`Failed to load clients overview (${result.key}): ${result.value.error.message}`);
+    }
+  }
+
+  return {
+    totalClients:
+      (revisado.count ?? 0) +
+      (contactado.count ?? 0) +
+      (respondio.count ?? 0) +
+      (enProceso.count ?? 0) +
+      (descartado.count ?? 0) +
+      (ganado.count ?? 0),
+    revisado: revisado.count ?? 0,
+    contactado: contactado.count ?? 0,
+    respondio: respondio.count ?? 0,
+    enProceso: enProceso.count ?? 0,
+    descartado: descartado.count ?? 0,
+    ganado: ganado.count ?? 0,
   };
 }
 

@@ -5,23 +5,26 @@ import { Loader2, RefreshCw, Search } from "lucide-react";
 import Link from "next/link";
 
 import { createLeadNote } from "@/features/leads/api/create-lead-note";
+import { getClientsOverview } from "@/features/leads/api/get-clients-overview";
 import { runDynamicEnrichment } from "@/features/leads/api/run-dynamic-enrichment";
 import { getLeadHistory } from "@/features/leads/api/get-lead-history";
 import { getLeadNotes } from "@/features/leads/api/get-lead-notes";
 import { getMetricsOverview } from "@/features/leads/api/get-metrics-overview";
+import { listClients } from "@/features/leads/api/list-clients";
 import { listLeads } from "@/features/leads/api/list-leads";
 import { runEnrichment } from "@/features/leads/api/run-enrichment";
 import { searchLeads } from "@/features/leads/api/search-leads";
 import { updateLeadStatus } from "@/features/leads/api/update-lead-status";
 import type {
   LeadListItem,
+  ClientsOverview,
   LeadMetricsOverview,
   LeadNoteItem,
   LeadStatusHistoryItem,
   ListLeadsResponse,
   SearchLeadsResponse,
 } from "@/features/leads/types";
-import { leadStatuses, type LeadStatus } from "@/lib/leads/status";
+import { crmLeadStatuses, leadStatuses, type LeadStatus } from "@/lib/leads/status";
 import { buildWhatsappChatUrl } from "@/lib/leads/whatsapp";
 
 type SearchFormState = {
@@ -43,6 +46,8 @@ type ListFiltersState = {
   pageSize: number;
 };
 
+type PipelineTab = "leads" | "clients";
+
 const statusLabel: Record<LeadStatus, string> = {
   nuevo: "Nuevo",
   revisado: "Revisado",
@@ -54,6 +59,7 @@ const statusLabel: Record<LeadStatus, string> = {
 };
 
 export function LeadsSearchView() {
+  const [activeTab, setActiveTab] = useState<PipelineTab>("leads");
   const [searchForm, setSearchForm] = useState<SearchFormState>({
     rubroComercial: "Gastronomia",
     city: "Cordoba",
@@ -86,6 +92,7 @@ export function LeadsSearchView() {
   const [historyItems, setHistoryItems] = useState<LeadStatusHistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [metrics, setMetrics] = useState<LeadMetricsOverview | null>(null);
+  const [clientsOverview, setClientsOverview] = useState<ClientsOverview | null>(null);
   const [isLoadingMetrics, setIsLoadingMetrics] = useState(false);
   const [notesLead, setNotesLead] = useState<LeadListItem | null>(null);
   const [leadNotes, setLeadNotes] = useState<LeadNoteItem[]>([]);
@@ -104,10 +111,18 @@ export function LeadsSearchView() {
       return "Sin resultados cargados todavia.";
     }
 
-    return `Mostrando ${listResult.leads.length} de ${listResult.total} leads guardados.`;
-  }, [listResult]);
+    if (activeTab === "clients") {
+      return `Mostrando ${listResult.leads.length} de ${listResult.total} clientes en seguimiento.`;
+    }
 
-  async function loadLeads(nextFilters?: Partial<ListFiltersState>) {
+    return `Mostrando ${listResult.leads.length} de ${listResult.total} leads nuevos.`;
+  }, [activeTab, listResult]);
+
+  const statusOptions: readonly LeadStatus[] =
+    activeTab === "clients" ? crmLeadStatuses : (["nuevo"] as const);
+
+  async function loadPipeline(nextFilters?: Partial<ListFiltersState>, pipeline?: PipelineTab) {
+    const targetPipeline = pipeline ?? activeTab;
     const resolvedFilters: ListFiltersState = {
       ...filters,
       ...nextFilters,
@@ -117,7 +132,8 @@ export function LeadsSearchView() {
     setError(null);
 
     try {
-      const data = await listLeads({
+      const dataLoader = targetPipeline === "clients" ? listClients : listLeads;
+      const data = await dataLoader({
         page: resolvedFilters.page,
         pageSize: resolvedFilters.pageSize,
         city: resolvedFilters.city || undefined,
@@ -132,7 +148,9 @@ export function LeadsSearchView() {
       setListResult(data);
       setFilters(resolvedFilters);
     } catch (unknownError) {
-      const message = unknownError instanceof Error ? unknownError.message : "No se pudieron cargar los leads";
+      const fallbackMessage =
+        targetPipeline === "clients" ? "No se pudieron cargar los clientes" : "No se pudieron cargar los leads";
+      const message = unknownError instanceof Error ? unknownError.message : fallbackMessage;
       setError(message);
     } finally {
       setIsLoadingTable(false);
@@ -153,9 +171,24 @@ export function LeadsSearchView() {
     }
   }
 
+  async function loadClientsMetrics() {
+    setIsLoadingMetrics(true);
+
+    try {
+      const data = await getClientsOverview();
+      setClientsOverview(data);
+    } catch (unknownError) {
+      const message = unknownError instanceof Error ? unknownError.message : "No se pudieron cargar metricas de clientes";
+      setError(message);
+    } finally {
+      setIsLoadingMetrics(false);
+    }
+  }
+
   useEffect(() => {
-    void loadLeads();
+    void loadPipeline();
     void loadMetrics();
+    void loadClientsMetrics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -176,12 +209,15 @@ export function LeadsSearchView() {
 
       setSearchResult(data);
 
-      await loadLeads({
+      await loadPipeline({
         city: searchForm.city,
         rubroComercial: searchForm.rubroComercial,
+        status: "all",
         page: 1,
-      });
+      }, "leads");
+      setActiveTab("leads");
       await loadMetrics();
+      await loadClientsMetrics();
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : "No se pudo ejecutar la busqueda";
       setError(message);
@@ -192,7 +228,7 @@ export function LeadsSearchView() {
 
   async function onFiltersSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await loadLeads({ page: 1 });
+    await loadPipeline({ page: 1 });
   }
 
   async function onStatusChange(lead: LeadListItem, status: LeadStatus) {
@@ -201,18 +237,9 @@ export function LeadsSearchView() {
 
     try {
       await updateLeadStatus(lead.id, status);
-
-      setListResult((prev) => {
-        if (!prev) {
-          return prev;
-        }
-
-        return {
-          ...prev,
-          leads: prev.leads.map((row) => (row.id === lead.id ? { ...row, status } : row)),
-        };
-      });
+      await loadPipeline({ page: 1 });
       await loadMetrics();
+      await loadClientsMetrics();
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : "No se pudo actualizar el estado";
       setError(message);
@@ -232,8 +259,9 @@ export function LeadsSearchView() {
         `Enrichment: procesados ${result.totalProcessed}, ok ${result.totalSucceeded}, fallidos ${result.totalFailed}`,
       );
 
-      await loadLeads();
+      await loadPipeline();
       await loadMetrics();
+      await loadClientsMetrics();
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : "No se pudo correr enrichment";
       setError(message);
@@ -253,8 +281,9 @@ export function LeadsSearchView() {
         `Fallback JS: procesados ${result.totalProcessed}, ok ${result.totalSucceeded}, fallidos ${result.totalFailed}`,
       );
 
-      await loadLeads();
+      await loadPipeline();
       await loadMetrics();
+      await loadClientsMetrics();
     } catch (unknownError) {
       const message = unknownError instanceof Error ? unknownError.message : "No se pudo correr fallback JS";
       setError(message);
@@ -336,29 +365,85 @@ export function LeadsSearchView() {
         </header>
 
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[
-            {
-              label: "Total leads",
-              value: metrics?.totalLeads ?? 0,
-            },
-            {
-              label: "Sin website",
-              value: metrics?.withoutWebsite ?? 0,
-            },
-            {
-              label: "Con WhatsApp",
-              value: metrics?.withWhatsapp ?? 0,
-            },
-            {
-              label: "Contactados",
-              value: metrics?.statusContactado ?? 0,
-            },
-          ].map((card) => (
+          {(activeTab === "clients"
+            ? [
+                {
+                  label: "Total clientes",
+                  value: clientsOverview?.totalClients ?? 0,
+                },
+                {
+                  label: "Contactados",
+                  value: clientsOverview?.contactado ?? 0,
+                },
+                {
+                  label: "En proceso",
+                  value: clientsOverview?.enProceso ?? 0,
+                },
+                {
+                  label: "Ganados",
+                  value: clientsOverview?.ganado ?? 0,
+                },
+              ]
+            : [
+                {
+                  label: "Total leads",
+                  value: metrics?.totalLeads ?? 0,
+                },
+                {
+                  label: "Sin website",
+                  value: metrics?.withoutWebsite ?? 0,
+                },
+                {
+                  label: "Con WhatsApp",
+                  value: metrics?.withWhatsapp ?? 0,
+                },
+                {
+                  label: "Contactados",
+                  value: metrics?.statusContactado ?? 0,
+                },
+              ]
+          ).map((card) => (
             <article key={card.label} className="rounded-xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-slate-500">{card.label}</p>
               <p className="mt-2 text-2xl font-semibold text-slate-900">{isLoadingMetrics ? "..." : card.value}</p>
             </article>
           ))}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white/90 p-2 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("leads");
+                const nextFilters = { ...filters, status: "all" as const, page: 1 };
+                setFilters(nextFilters);
+                void loadPipeline(nextFilters, "leads");
+              }}
+              className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                activeTab === "leads" ? "bg-cyan-700 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Leads nuevos
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab("clients");
+                const nextFilters = { ...filters, status: "all" as const, page: 1 };
+                setFilters(nextFilters);
+                void loadPipeline(nextFilters, "clients");
+              }}
+              className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                activeTab === "clients"
+                  ? "bg-emerald-700 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Clientes CRM
+            </button>
+          </div>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm md:p-6">
@@ -433,38 +518,44 @@ export function LeadsSearchView() {
         <section className="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm md:p-6">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">Leads guardados</h2>
+              <h2 className="text-lg font-semibold text-slate-900">
+                {activeTab === "clients" ? "Clientes en seguimiento" : "Leads guardados"}
+              </h2>
               <p className="text-sm text-slate-500">{subtitle}</p>
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onRunEnrichment}
-                disabled={isRunningEnrichment || isRunningDynamicEnrichment || isLoadingTable}
-                className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isRunningEnrichment ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Correr enrichment
-              </button>
+              {activeTab === "leads" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={onRunEnrichment}
+                    disabled={isRunningEnrichment || isRunningDynamicEnrichment || isLoadingTable}
+                    className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-800 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isRunningEnrichment ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Correr enrichment
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onRunDynamicEnrichment}
+                    disabled={isRunningDynamicEnrichment || isRunningEnrichment || isLoadingTable}
+                    className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isRunningDynamicEnrichment ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Fallback JS (Playwright)
+                  </button>
+                </>
+              ) : null}
 
               <button
                 type="button"
-                onClick={onRunDynamicEnrichment}
-                disabled={isRunningDynamicEnrichment || isRunningEnrichment || isLoadingTable}
-                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-800 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isRunningDynamicEnrichment ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4" />
-                )}
-                Fallback JS (Playwright)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => loadLeads()}
+                onClick={() => loadPipeline()}
                 disabled={isLoadingTable}
                 className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -503,8 +594,8 @@ export function LeadsSearchView() {
               }
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cyan-400"
             >
-              <option value="all">Todos los estados</option>
-              {leadStatuses.map((status) => (
+              <option value="all">{activeTab === "clients" ? "Todos los estados CRM" : "Estado nuevo"}</option>
+              {statusOptions.map((status) => (
                 <option key={status} value={status}>
                   {statusLabel[status]}
                 </option>
@@ -604,7 +695,7 @@ export function LeadsSearchView() {
                 {isLoadingTable ? (
                   <tr>
                     <td colSpan={12} className="rounded-xl bg-slate-50 px-3 py-12 text-center text-sm text-slate-500">
-                      Cargando leads...
+                      {activeTab === "clients" ? "Cargando clientes..." : "Cargando leads..."}
                     </td>
                   </tr>
                 ) : null}
@@ -612,7 +703,9 @@ export function LeadsSearchView() {
                 {!isLoadingTable && (listResult?.leads.length ?? 0) === 0 ? (
                   <tr>
                     <td colSpan={12} className="rounded-xl bg-slate-50 px-3 py-12 text-center text-sm text-slate-500">
-                      No hay leads para estos filtros.
+                      {activeTab === "clients"
+                        ? "No hay clientes para estos filtros."
+                        : "No hay leads para estos filtros."}
                     </td>
                   </tr>
                 ) : null}
@@ -849,7 +942,7 @@ export function LeadsSearchView() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => loadLeads({ page: Math.max(1, filters.page - 1) })}
+                onClick={() => loadPipeline({ page: Math.max(1, filters.page - 1) })}
                 disabled={!canGoPrev || isLoadingTable}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -857,7 +950,7 @@ export function LeadsSearchView() {
               </button>
               <button
                 type="button"
-                onClick={() => loadLeads({ page: filters.page + 1 })}
+                onClick={() => loadPipeline({ page: filters.page + 1 })}
                 disabled={!canGoNext || isLoadingTable}
                 className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
               >

@@ -107,6 +107,16 @@ export type LeadMetricsOverview = {
   statusContactado: number;
 };
 
+export type ClientsOverview = {
+  totalClients: number;
+  revisado: number;
+  contactado: number;
+  respondio: number;
+  enProceso: number;
+  descartado: number;
+  ganado: number;
+};
+
 export type LeadDetailContact = {
   id: string;
   channel: "whatsapp" | "instagram" | "phone" | "email";

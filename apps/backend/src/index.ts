@@ -1,6 +1,9 @@
 import crypto from "node:crypto";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 import cors from "cors";
+import { config as loadDotenv } from "dotenv";
 import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
@@ -10,6 +13,27 @@ import pinoHttp from "pino-http";
 import { getServerConfig } from "./config";
 import { buildV1Router } from "./routes";
 import { getRequestId } from "./utils";
+
+function loadEnvironmentFiles() {
+  const candidates = [
+    resolve(process.cwd(), ".env"),
+    resolve(process.cwd(), "apps/backend/.env"),
+    resolve(process.cwd(), "../../.env"),
+  ];
+
+  const loaded = new Set<string>();
+
+  for (const candidate of candidates) {
+    if (loaded.has(candidate) || !existsSync(candidate)) {
+      continue;
+    }
+
+    loadDotenv({ path: candidate, override: false });
+    loaded.add(candidate);
+  }
+}
+
+loadEnvironmentFiles();
 
 const config = getServerConfig();
 const logger = pino({

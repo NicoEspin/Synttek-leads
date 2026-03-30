@@ -24,6 +24,7 @@ import {
   mapPlaceToLeadCandidate,
   textSearchPlaces,
 } from "./lib/places/client";
+import { getPlacesEnv, MissingEnvError } from "./lib/server-env";
 
 import { sendInternalError, sendZodError } from "./utils";
 
@@ -241,6 +242,7 @@ export function buildV1Router() {
 
     try {
       const payload = payloadResult.data;
+      getPlacesEnv();
       const textQuery = buildTextQuery(payload);
 
       searchRunId = await createSearchRun(textQuery, payload.city, payload.rubroComercial);
@@ -290,6 +292,14 @@ export function buildV1Router() {
         leads,
       });
     } catch (error) {
+      if (error instanceof MissingEnvError) {
+        return res.status(503).json({
+          message: "Search provider is not configured",
+          error: error.message,
+          searchRunId,
+        });
+      }
+
       if (searchRunId) {
         try {
           await finalizeSearchRun(searchRunId, {

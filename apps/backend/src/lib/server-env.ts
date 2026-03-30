@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+export class MissingEnvError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MissingEnvError";
+  }
+}
+
 const supabaseEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url("NEXT_PUBLIC_SUPABASE_URL must be a valid URL"),
   SUPABASE_SERVICE_ROLE_KEY: z
@@ -27,8 +34,16 @@ export function getSupabaseEnv() {
 }
 
 export function getPlacesEnv() {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY ?? process.env.GOOGLE_MAPS_API_KEY;
+
+  if (!apiKey) {
+    throw new MissingEnvError(
+      "Missing Google Places API key. Set GOOGLE_PLACES_API_KEY (or GOOGLE_MAPS_API_KEY) in backend env vars.",
+    );
+  }
+
   return placesEnvSchema.parse({
-    GOOGLE_PLACES_API_KEY: process.env.GOOGLE_PLACES_API_KEY,
+    GOOGLE_PLACES_API_KEY: apiKey,
   });
 }
 

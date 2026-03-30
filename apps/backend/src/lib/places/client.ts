@@ -1,5 +1,5 @@
-import { getPlacesEnv } from "@/lib/server-env";
-import { classifyWebsitePresence } from "@/lib/leads/website-signals";
+import { getPlacesEnv } from "../server-env";
+import { classifyWebsitePresence } from "../leads/website-signals";
 
 const PLACES_API_BASE_URL = "https://places.googleapis.com/v1";
 

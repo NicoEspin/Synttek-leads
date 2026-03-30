@@ -4,12 +4,12 @@ import {
   applyLeadEnrichmentResult,
   listLeadsForDynamicEnrichment,
   markLeadEnrichmentFailed,
-} from "@/lib/leads/repository";
+} from "../leads/repository";
 
 import {
   extractContactSignalsFromHtml,
   type EnrichmentContactSignal,
-} from "@/lib/enrichment/extract-contact-signals";
+} from "./extract-contact-signals";
 
 type RunDynamicEnrichmentInput = {
   batchSize: number;

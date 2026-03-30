@@ -2,8 +2,8 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 import { z } from "zod";
 
-import { runDynamicEnrichment } from "@/lib/enrichment/run-dynamic-enrichment";
-import { runStaticEnrichment } from "@/lib/enrichment/run-static-enrichment";
+import { runDynamicEnrichment } from "./lib/enrichment/run-dynamic-enrichment";
+import { runStaticEnrichment } from "./lib/enrichment/run-static-enrichment";
 import {
   createLeadNote,
   createSearchRun,
@@ -17,13 +17,13 @@ import {
   listLeadStatusHistory,
   persistLeadCandidates,
   updateLeadStatus,
-} from "@/lib/leads/repository";
-import { crmLeadStatuses, leadStatuses } from "@/lib/leads/status";
+} from "./lib/leads/repository";
+import { crmLeadStatuses, leadStatuses } from "./lib/leads/status";
 import {
   getPlaceDetails,
   mapPlaceToLeadCandidate,
   textSearchPlaces,
-} from "@/lib/places/client";
+} from "./lib/places/client";
 
 import { sendInternalError, sendZodError } from "./utils";
 

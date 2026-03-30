@@ -2,13 +2,13 @@ import {
   applyLeadEnrichmentResult,
   listLeadsForStaticEnrichment,
   markLeadEnrichmentFailed,
-} from "@/lib/leads/repository";
-import { getEnrichmentEnv } from "@/lib/server-env";
+} from "../leads/repository";
+import { getEnrichmentEnv } from "../server-env";
 
 import {
   extractContactSignalsFromHtml,
   type EnrichmentContactSignal,
-} from "@/lib/enrichment/extract-contact-signals";
+} from "./extract-contact-signals";
 
 type RunStaticEnrichmentInput = {
   batchSize: number;

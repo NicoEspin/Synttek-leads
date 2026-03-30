@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 
-import { getSupabaseEnv } from "@/lib/server-env";
+import { getSupabaseEnv } from "../server-env";
 
 export function createServiceRoleClient() {
   const { NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = getSupabaseEnv();

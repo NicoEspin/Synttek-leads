@@ -1,7 +1,7 @@
-import type { LeadSearchCandidate } from "@/lib/places/client";
-import { calculateLeadScore } from "@/lib/leads/scoring";
-import type { LeadStatus } from "@/lib/leads/status";
-import { createServiceRoleClient } from "@/lib/supabase/service-role";
+import type { LeadSearchCandidate } from "../places/client";
+import { calculateLeadScore } from "./scoring";
+import type { LeadStatus } from "./status";
+import { createServiceRoleClient } from "../supabase/service-role";
 
 type ContactVerification = "confirmed" | "candidate";
 type ContactConfidence = "high" | "medium" | "low";

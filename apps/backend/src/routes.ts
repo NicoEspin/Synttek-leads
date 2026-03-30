@@ -233,9 +233,14 @@ export function buildV1Router() {
 
   router.post("/leads/search", async (req, res) => {
     let searchRunId: string | null = null;
+    const payloadResult = leadSearchSchema.safeParse(req.body);
+
+    if (!payloadResult.success) {
+      return sendZodError(res, "Invalid payload", payloadResult.error);
+    }
 
     try {
-      const payload = leadSearchSchema.parse(req.body);
+      const payload = payloadResult.data;
       const textQuery = buildTextQuery(payload);
 
       searchRunId = await createSearchRun(textQuery, payload.city, payload.rubroComercial);
@@ -295,10 +300,6 @@ export function buildV1Router() {
         } catch {
           // noop
         }
-      }
-
-      if (error instanceof z.ZodError) {
-        return sendZodError(res, "Invalid payload", error);
       }
 
       return res.status(500).json({

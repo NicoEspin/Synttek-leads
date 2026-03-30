@@ -61,7 +61,7 @@ app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || config.corsOrigins.includes(origin)) {
+      if (!origin || config.isCorsOriginAllowed(origin)) {
         callback(null, true);
         return;
       }

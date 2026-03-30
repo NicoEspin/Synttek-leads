@@ -3,7 +3,7 @@ import {
   listLeadsForStaticEnrichment,
   markLeadEnrichmentFailed,
 } from "@/lib/leads/repository";
-import { getServerEnv } from "@/lib/server-env";
+import { getEnrichmentEnv } from "@/lib/server-env";
 
 import {
   extractContactSignalsFromHtml,
@@ -41,7 +41,7 @@ export async function runStaticEnrichment(
   input: RunStaticEnrichmentInput,
 ): Promise<RunStaticEnrichmentResult> {
   const leads = await listLeadsForStaticEnrichment(input.batchSize);
-  const { ENRICHMENT_USER_AGENT } = getServerEnv();
+  const { ENRICHMENT_USER_AGENT } = getEnrichmentEnv();
   const results: EnrichmentLeadResult[] = [];
 
   for (const lead of leads) {

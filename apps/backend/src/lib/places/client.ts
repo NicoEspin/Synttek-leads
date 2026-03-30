@@ -1,4 +1,4 @@
-import { getServerEnv } from "@/lib/server-env";
+import { getPlacesEnv } from "@/lib/server-env";
 import { classifyWebsitePresence } from "@/lib/leads/website-signals";
 
 const PLACES_API_BASE_URL = "https://places.googleapis.com/v1";
@@ -58,7 +58,7 @@ async function placesFetch<T>(
   path: string,
   options: Omit<RequestInit, "headers"> & { fieldMask: string },
 ): Promise<T> {
-  const { GOOGLE_PLACES_API_KEY } = getServerEnv();
+  const { GOOGLE_PLACES_API_KEY } = getPlacesEnv();
   const response = await fetch(`${PLACES_API_BASE_URL}${path}`, {
     ...options,
     cache: "no-store",

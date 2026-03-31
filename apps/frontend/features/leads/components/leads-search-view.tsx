@@ -37,6 +37,7 @@ type SearchFormState = {
 type ListFiltersState = {
   city: string;
   rubroComercial: string;
+  phone: string;
   status: "all" | LeadStatus;
   onlyWithoutWebsite: boolean;
   onlyWithPhone: boolean;
@@ -54,6 +55,7 @@ function createDefaultListFilters(): ListFiltersState {
   return {
     city: "",
     rubroComercial: "",
+    phone: "",
     status: "all",
     onlyWithoutWebsite: false,
     onlyWithPhone: false,
@@ -147,6 +149,7 @@ export function LeadsSearchView() {
         pageSize: resolvedFilters.pageSize,
         city: resolvedFilters.city || undefined,
         rubroComercial: resolvedFilters.rubroComercial || undefined,
+        phone: resolvedFilters.phone || undefined,
         status: resolvedFilters.status === "all" ? undefined : resolvedFilters.status,
         onlyWithoutWebsite: resolvedFilters.onlyWithoutWebsite,
         onlyWithPhone: resolvedFilters.onlyWithPhone,
@@ -200,6 +203,17 @@ export function LeadsSearchView() {
     void loadClientsMetrics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== "clients") {
+      return;
+    }
+
+    const nextFilters = createDefaultListFilters();
+    setFilters(nextFilters);
+    void loadPipeline(nextFilters, "clients");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   useEffect(() => {
     try {
@@ -470,7 +484,7 @@ export function LeadsSearchView() {
               type="button"
               onClick={() => {
                 setActiveTab("leads");
-                const nextFilters = { ...filters, status: "all" as const, page: 1 };
+                const nextFilters = { ...filters, phone: "", status: "all" as const, page: 1 };
                 setFilters(nextFilters);
                 void loadPipeline(nextFilters, "leads");
               }}
@@ -485,9 +499,6 @@ export function LeadsSearchView() {
               type="button"
               onClick={() => {
                 setActiveTab("clients");
-                const nextFilters = createDefaultListFilters();
-                setFilters(nextFilters);
-                void loadPipeline(nextFilters, "clients");
               }}
               className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
                 activeTab === "clients"
@@ -623,7 +634,7 @@ export function LeadsSearchView() {
             <p className="mb-4 rounded-lg bg-cyan-50 px-3 py-2 text-sm text-cyan-800">{enrichmentMessage}</p>
           ) : null}
 
-          <form className="grid gap-3 md:grid-cols-6" onSubmit={onFiltersSubmit}>
+          <form className="grid gap-3 md:grid-cols-7" onSubmit={onFiltersSubmit}>
             <input
               value={filters.city}
               onChange={(event) => setFilters((prev) => ({ ...prev, city: event.target.value }))}
@@ -637,6 +648,15 @@ export function LeadsSearchView() {
               placeholder="Filtrar rubro"
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cyan-400"
             />
+
+            {activeTab === "clients" ? (
+              <input
+                value={filters.phone}
+                onChange={(event) => setFilters((prev) => ({ ...prev, phone: event.target.value }))}
+                placeholder="Filtrar telefono"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-cyan-400"
+              />
+            ) : null}
 
             <select
               value={filters.status}

@@ -63,6 +63,7 @@ export type ListLeadsRequest = {
   pageSize?: number;
   city?: string;
   rubroComercial?: string;
+  phone?: string;
   status?: LeadStatus;
   onlyWithoutWebsite?: boolean;
   onlyWithPhone?: boolean;

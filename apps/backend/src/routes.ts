@@ -36,6 +36,7 @@ const listLeadsQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(12),
   city: z.string().trim().min(1).optional(),
   rubroComercial: z.string().trim().min(1).optional(),
+  phone: z.string().trim().min(1).optional(),
   status: z.enum(leadStatuses).optional(),
   onlyWithoutWebsite: z
     .enum(["true", "false"])
@@ -54,6 +55,7 @@ const listClientsQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(50).default(12),
   city: z.string().trim().min(1).optional(),
   rubroComercial: z.string().trim().min(1).optional(),
+  phone: z.string().trim().min(1).optional(),
   status: z.enum(crmLeadStatuses).optional(),
   onlyWithoutWebsite: z
     .enum(["true", "false"])
@@ -155,6 +157,7 @@ export function buildV1Router() {
         pageSize: req.query.pageSize,
         city: req.query.city,
         rubroComercial: req.query.rubroComercial,
+        phone: req.query.phone,
         status: req.query.status,
         onlyWithoutWebsite: req.query.onlyWithoutWebsite,
         onlyWithPhone: req.query.onlyWithPhone,
@@ -167,6 +170,7 @@ export function buildV1Router() {
         pageSize: payload.pageSize,
         city: payload.city,
         rubroComercial: payload.rubroComercial,
+        phone: payload.phone,
         status: payload.status ?? "nuevo",
         onlyWithoutWebsite: payload.onlyWithoutWebsite,
         onlyWithPhone: payload.onlyWithPhone,
@@ -197,6 +201,7 @@ export function buildV1Router() {
         pageSize: req.query.pageSize,
         city: req.query.city,
         rubroComercial: req.query.rubroComercial,
+        phone: req.query.phone,
         status: req.query.status,
         onlyWithoutWebsite: req.query.onlyWithoutWebsite,
         onlyWithPhone: req.query.onlyWithPhone,
@@ -209,6 +214,7 @@ export function buildV1Router() {
         pageSize: payload.pageSize,
         city: payload.city,
         rubroComercial: payload.rubroComercial,
+        phone: payload.phone,
         status: payload.status,
         onlyWithoutWebsite: payload.onlyWithoutWebsite,
         onlyWithPhone: payload.onlyWithPhone,

@@ -8,6 +8,7 @@ function buildQuery(params: ListLeadsRequest) {
   if (params.pageSize) searchParams.set("pageSize", String(params.pageSize));
   if (params.city) searchParams.set("city", params.city);
   if (params.rubroComercial) searchParams.set("rubroComercial", params.rubroComercial);
+  if (params.phone) searchParams.set("phone", params.phone);
   if (params.status) searchParams.set("status", params.status);
   if (typeof params.onlyWithoutWebsite === "boolean") {
     searchParams.set("onlyWithoutWebsite", String(params.onlyWithoutWebsite));

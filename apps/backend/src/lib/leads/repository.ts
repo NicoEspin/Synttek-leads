@@ -106,6 +106,7 @@ type ListLeadsInput = {
   pageSize: number;
   city?: string;
   rubroComercial?: string;
+  phone?: string;
   status?: LeadStatus;
   excludeStatus?: LeadStatus;
   onlyWithoutWebsite?: boolean;
@@ -485,6 +486,10 @@ export async function listLeads(input: ListLeadsInput): Promise<ListLeadsResult>
 
   if (input.rubroComercial) {
     query = query.ilike("rubro_comercial", `%${input.rubroComercial}%`);
+  }
+
+  if (input.phone) {
+    query = query.ilike("phone_e164", `%${input.phone}%`);
   }
 
   if (input.status) {

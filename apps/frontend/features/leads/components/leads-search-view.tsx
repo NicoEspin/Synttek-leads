@@ -50,6 +50,20 @@ type PipelineTab = "leads" | "clients";
 
 const viewedLeadsStorageKey = "synttek.leads.viewed.v1";
 
+function createDefaultListFilters(): ListFiltersState {
+  return {
+    city: "",
+    rubroComercial: "",
+    status: "all",
+    onlyWithoutWebsite: false,
+    onlyWithPhone: false,
+    sortBy: "updated_at",
+    sortDir: "desc",
+    page: 1,
+    pageSize: 12,
+  };
+}
+
 const statusLabel: Record<LeadStatus, string> = {
   nuevo: "Nuevo",
   revisado: "Revisado",
@@ -69,17 +83,7 @@ export function LeadsSearchView() {
     pageSize: 10,
   });
 
-  const [filters, setFilters] = useState<ListFiltersState>({
-    city: "",
-    rubroComercial: "",
-    status: "all",
-    onlyWithoutWebsite: false,
-    onlyWithPhone: false,
-    sortBy: "updated_at",
-    sortDir: "desc",
-    page: 1,
-    pageSize: 12,
-  });
+  const [filters, setFilters] = useState<ListFiltersState>(createDefaultListFilters);
 
   const [searchResult, setSearchResult] = useState<SearchLeadsResponse | null>(null);
   const [listResult, setListResult] = useState<ListLeadsResponse | null>(null);
@@ -481,7 +485,7 @@ export function LeadsSearchView() {
               type="button"
               onClick={() => {
                 setActiveTab("clients");
-                const nextFilters = { ...filters, status: "all" as const, page: 1 };
+                const nextFilters = createDefaultListFilters();
                 setFilters(nextFilters);
                 void loadPipeline(nextFilters, "clients");
               }}

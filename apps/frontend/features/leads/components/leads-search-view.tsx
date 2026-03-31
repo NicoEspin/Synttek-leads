@@ -48,6 +48,8 @@ type ListFiltersState = {
 
 type PipelineTab = "leads" | "clients";
 
+const viewedLeadsStorageKey = "synttek.leads.viewed.v1";
+
 const statusLabel: Record<LeadStatus, string> = {
   nuevo: "Nuevo",
   revisado: "Revisado",
@@ -99,12 +101,15 @@ export function LeadsSearchView() {
   const [isLoadingNotes, setIsLoadingNotes] = useState(false);
   const [newNote, setNewNote] = useState("");
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [lastInteractedLeadId, setLastInteractedLeadId] = useState<string | null>(null);
+  const [viewedLeadIds, setViewedLeadIds] = useState<Set<string>>(new Set());
 
   const historyModalOpen = Boolean(selectedHistoryLead);
   const notesModalOpen = Boolean(notesLead);
 
   const canGoPrev = (listResult?.page ?? 1) > 1;
   const canGoNext = (listResult?.page ?? 1) < (listResult?.totalPages ?? 1);
+  const tableColumnCount = activeTab === "leads" ? 13 : 12;
 
   const subtitle = useMemo(() => {
     if (!listResult) {
@@ -192,6 +197,50 @@ export function LeadsSearchView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(viewedLeadsStorageKey);
+      if (!raw) {
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+
+      const safeLeadIds = parsed.filter((value): value is string => typeof value === "string");
+      setViewedLeadIds(new Set(safeLeadIds));
+    } catch {
+      // noop
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(viewedLeadsStorageKey, JSON.stringify(Array.from(viewedLeadIds)));
+    } catch {
+      // noop
+    }
+  }, [viewedLeadIds]);
+
+  function markLeadAsInteracted(leadId: string) {
+    setLastInteractedLeadId(leadId);
+  }
+
+  function setLeadViewed(leadId: string, isViewed: boolean) {
+    setViewedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (isViewed) {
+        next.add(leadId);
+      } else {
+        next.delete(leadId);
+      }
+
+      return next;
+    });
+  }
+
   async function onSearchSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSearching(true);
@@ -232,6 +281,7 @@ export function LeadsSearchView() {
   }
 
   async function onStatusChange(lead: LeadListItem, status: LeadStatus) {
+    markLeadAsInteracted(lead.id);
     setUpdatingLeadId(lead.id);
     setError(null);
 
@@ -686,6 +736,9 @@ export function LeadsSearchView() {
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Rating</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">WhatsApp</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Instagram</th>
+                  {activeTab === "leads" ? (
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Visto</th>
+                  ) : null}
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Enrichment</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Estado CRM</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Acciones</th>
@@ -694,7 +747,7 @@ export function LeadsSearchView() {
               <tbody>
                 {isLoadingTable ? (
                   <tr>
-                    <td colSpan={12} className="rounded-xl bg-slate-50 px-3 py-12 text-center text-sm text-slate-500">
+                    <td colSpan={tableColumnCount} className="rounded-xl bg-slate-50 px-3 py-12 text-center text-sm text-slate-500">
                       {activeTab === "clients" ? "Cargando clientes..." : "Cargando leads..."}
                     </td>
                   </tr>
@@ -702,7 +755,7 @@ export function LeadsSearchView() {
 
                 {!isLoadingTable && (listResult?.leads.length ?? 0) === 0 ? (
                   <tr>
-                    <td colSpan={12} className="rounded-xl bg-slate-50 px-3 py-12 text-center text-sm text-slate-500">
+                    <td colSpan={tableColumnCount} className="rounded-xl bg-slate-50 px-3 py-12 text-center text-sm text-slate-500">
                       {activeTab === "clients"
                         ? "No hay clientes para estos filtros."
                         : "No hay leads para estos filtros."}
@@ -712,7 +765,14 @@ export function LeadsSearchView() {
 
                 {!isLoadingTable
                   ? listResult?.leads.map((lead) => (
-                      <tr key={lead.id} className="rounded-xl bg-slate-50/70">
+                      <tr
+                        key={lead.id}
+                        className={`rounded-xl ${
+                          activeTab === "leads" && lead.id === lastInteractedLeadId
+                            ? "bg-cyan-100/80 ring-1 ring-cyan-300"
+                            : "bg-slate-50/70"
+                        }`}
+                      >
                         <td className="px-3 py-3 text-sm text-slate-700 first:rounded-l-xl">
                           <div>
                             <p className="font-semibold text-slate-900">{lead.businessName}</p>
@@ -743,6 +803,12 @@ export function LeadsSearchView() {
                                 href={waChatUrl}
                                 target="_blank"
                                 rel="noreferrer"
+                                onClick={() => {
+                                  markLeadAsInteracted(lead.id);
+                                  if (activeTab === "leads") {
+                                    setLeadViewed(lead.id, true);
+                                  }
+                                }}
                                 className="text-sm font-medium text-emerald-700 hover:text-emerald-900"
                               >
                                 Ir al chat
@@ -758,6 +824,7 @@ export function LeadsSearchView() {
                               href={lead.instagramUrl}
                               target="_blank"
                               rel="noreferrer"
+                              onClick={() => markLeadAsInteracted(lead.id)}
                               className="text-sm font-medium text-pink-700 hover:text-pink-900"
                             >
                               Abrir
@@ -766,6 +833,24 @@ export function LeadsSearchView() {
                             "-"
                           )}
                         </td>
+                        {activeTab === "leads" ? (
+                          <td className="px-3 py-3 text-sm text-slate-700">
+                            <label className="inline-flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={viewedLeadIds.has(lead.id)}
+                                onChange={(event) => {
+                                  markLeadAsInteracted(lead.id);
+                                  setLeadViewed(lead.id, event.target.checked);
+                                }}
+                                className="h-4 w-4 rounded border-slate-300"
+                              />
+                              <span className="text-xs font-medium text-slate-600">
+                                {viewedLeadIds.has(lead.id) ? "Visto" : "Pendiente"}
+                              </span>
+                            </label>
+                          </td>
+                        ) : null}
                         <td className="px-3 py-3 text-sm text-slate-700">
                           <span className="rounded-full bg-slate-200 px-2 py-1 text-xs font-medium text-slate-700">
                             {lead.enrichmentStatus}
@@ -792,6 +877,7 @@ export function LeadsSearchView() {
                                 href={lead.mapsUrl}
                                 target="_blank"
                                 rel="noreferrer"
+                                onClick={() => markLeadAsInteracted(lead.id)}
                                 className="text-sm font-medium text-cyan-700 hover:text-cyan-900"
                               >
                                 Ver Maps
@@ -802,7 +888,10 @@ export function LeadsSearchView() {
 
                             <button
                               type="button"
-                              onClick={() => onViewHistory(lead)}
+                              onClick={() => {
+                                markLeadAsInteracted(lead.id);
+                                void onViewHistory(lead);
+                              }}
                               className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
                             >
                               Historial
@@ -810,7 +899,10 @@ export function LeadsSearchView() {
 
                             <button
                               type="button"
-                              onClick={() => onViewNotes(lead)}
+                              onClick={() => {
+                                markLeadAsInteracted(lead.id);
+                                void onViewNotes(lead);
+                              }}
                               className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
                             >
                               Notas
@@ -818,6 +910,7 @@ export function LeadsSearchView() {
 
                             <Link
                               href={`/leads/${lead.id}`}
+                              onClick={() => markLeadAsInteracted(lead.id)}
                               className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
                             >
                               Detalle

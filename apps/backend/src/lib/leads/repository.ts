@@ -300,6 +300,32 @@ type LeadScoringContextRow = {
   instagram_url: string | null;
 };
 
+function buildPhoneSearchCandidates(rawPhone: string) {
+  const digits = rawPhone.replace(/\D/g, "");
+  if (!digits) {
+    return [];
+  }
+
+  const candidates = new Set<string>([digits]);
+
+  if (digits.startsWith("549") && digits.length > 3) {
+    const withoutMobilePrefix = `54${digits.slice(3)}`;
+    candidates.add(withoutMobilePrefix);
+    candidates.add(digits.slice(3));
+  }
+
+  if (digits.startsWith("54") && digits.length > 2) {
+    candidates.add(digits.slice(2));
+
+    const afterCountry = digits.slice(2);
+    if (!afterCountry.startsWith("9")) {
+      candidates.add(`549${afterCountry}`);
+    }
+  }
+
+  return Array.from(candidates).filter((value) => value.length >= 8);
+}
+
 function dedupeByPlaceId(leads: LeadSearchCandidate[]) {
   const byPlaceId = new Map<string, LeadSearchCandidate>();
   for (const lead of leads) {
@@ -489,7 +515,15 @@ export async function listLeads(input: ListLeadsInput): Promise<ListLeadsResult>
   }
 
   if (input.phone) {
-    query = query.ilike("phone_e164", `%${input.phone}%`);
+    const phoneCandidates = buildPhoneSearchCandidates(input.phone);
+
+    if (phoneCandidates.length > 0) {
+      const phoneOrFilter = phoneCandidates
+        .map((candidate) => `phone_e164.ilike.%${candidate}%`)
+        .join(",");
+
+      query = query.or(phoneOrFilter);
+    }
   }
 
   if (input.status) {

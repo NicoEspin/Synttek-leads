@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, RefreshCw, Search } from "lucide-react";
+import { Download, Loader2, RefreshCw, Search } from "lucide-react";
 import Link from "next/link";
 
 import { createLeadNote } from "@/features/leads/api/create-lead-note";
+import { exportLeads } from "@/features/leads/api/export-leads";
 import { getClientsOverview } from "@/features/leads/api/get-clients-overview";
 import { runDynamicEnrichment } from "@/features/leads/api/run-dynamic-enrichment";
 import { getLeadHistory } from "@/features/leads/api/get-lead-history";
@@ -86,6 +87,7 @@ export function LeadsSearchView() {
   });
 
   const [filters, setFilters] = useState<ListFiltersState>(createDefaultListFilters);
+  const [appliedFilters, setAppliedFilters] = useState<ListFiltersState>(createDefaultListFilters);
 
   const [searchResult, setSearchResult] = useState<SearchLeadsResponse | null>(null);
   const [listResult, setListResult] = useState<ListLeadsResponse | null>(null);
@@ -109,6 +111,7 @@ export function LeadsSearchView() {
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [lastInteractedLeadId, setLastInteractedLeadId] = useState<string | null>(null);
   const [viewedLeadIds, setViewedLeadIds] = useState<Set<string>>(new Set());
+  const [exportingFormat, setExportingFormat] = useState<"csv" | "pdf" | null>(null);
 
   const historyModalOpen = Boolean(selectedHistoryLead);
   const notesModalOpen = Boolean(notesLead);
@@ -116,6 +119,7 @@ export function LeadsSearchView() {
   const canGoPrev = (listResult?.page ?? 1) > 1;
   const canGoNext = (listResult?.page ?? 1) < (listResult?.totalPages ?? 1);
   const tableColumnCount = activeTab === "leads" ? 13 : 12;
+  const exportCount = listResult?.total ?? 0;
 
   const subtitle = useMemo(() => {
     if (!listResult) {
@@ -135,7 +139,7 @@ export function LeadsSearchView() {
   async function loadPipeline(nextFilters?: Partial<ListFiltersState>, pipeline?: PipelineTab) {
     const targetPipeline = pipeline ?? activeTab;
     const resolvedFilters: ListFiltersState = {
-      ...filters,
+      ...appliedFilters,
       ...nextFilters,
     };
 
@@ -158,6 +162,7 @@ export function LeadsSearchView() {
       });
 
       setListResult(data);
+      setAppliedFilters(resolvedFilters);
       setFilters(resolvedFilters);
     } catch (unknownError) {
       const fallbackMessage =
@@ -211,6 +216,7 @@ export function LeadsSearchView() {
 
     const nextFilters = createDefaultListFilters();
     setFilters(nextFilters);
+    setAppliedFilters(nextFilters);
     void loadPipeline(nextFilters, "clients");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -295,7 +301,45 @@ export function LeadsSearchView() {
 
   async function onFiltersSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await loadPipeline({ page: 1 });
+    await loadPipeline({ ...filters, page: 1 });
+  }
+
+  async function onExport(format: "csv" | "pdf") {
+    setExportingFormat(format);
+    setError(null);
+
+    try {
+      const result = await exportLeads({
+        pipeline: activeTab,
+        format,
+        filters: {
+          page: 1,
+          pageSize: appliedFilters.pageSize,
+          city: appliedFilters.city || undefined,
+          rubroComercial: appliedFilters.rubroComercial || undefined,
+          phone: appliedFilters.phone || undefined,
+          status: appliedFilters.status === "all" ? undefined : appliedFilters.status,
+          onlyWithoutWebsite: appliedFilters.onlyWithoutWebsite,
+          onlyWithPhone: appliedFilters.onlyWithPhone,
+          sortBy: appliedFilters.sortBy,
+          sortDir: appliedFilters.sortDir,
+        },
+      });
+
+      const objectUrl = window.URL.createObjectURL(result.blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = result.filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (unknownError) {
+      const message = unknownError instanceof Error ? unknownError.message : "No se pudo exportar la tabla";
+      setError(message);
+    } finally {
+      setExportingFormat(null);
+    }
   }
 
   async function onStatusChange(lead: LeadListItem, status: LeadStatus) {
@@ -486,6 +530,7 @@ export function LeadsSearchView() {
                 setActiveTab("leads");
                 const nextFilters = { ...filters, phone: "", status: "all" as const, page: 1 };
                 setFilters(nextFilters);
+                setAppliedFilters(nextFilters);
                 void loadPipeline(nextFilters, "leads");
               }}
               className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
@@ -589,7 +634,31 @@ export function LeadsSearchView() {
               <p className="text-sm text-slate-500">{subtitle}</p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
+                Exporta {exportCount} {exportCount === 1 ? "registro" : "registros"}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => onExport("csv")}
+                disabled={isLoadingTable || exportingFormat !== null || exportCount === 0}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportingFormat === "csv" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Exportar CSV
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onExport("pdf")}
+                disabled={isLoadingTable || exportingFormat !== null || exportCount === 0}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {exportingFormat === "pdf" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Exportar PDF
+              </button>
+
               {activeTab === "leads" ? (
                 <>
                   <button
@@ -744,6 +813,10 @@ export function LeadsSearchView() {
               Solo con telefono
             </label>
           </form>
+
+          <p className="mt-3 text-xs text-slate-500">
+            Los exports usan los filtros aplicados y descargan todos los resultados del tab activo, no solo esta pagina.
+          </p>
 
           {error ? <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
 

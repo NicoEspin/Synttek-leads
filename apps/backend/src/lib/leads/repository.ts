@@ -122,6 +122,8 @@ type ListLeadsResult = {
   pageSize: number;
 };
 
+type ListAllLeadsInput = Omit<ListLeadsInput, "page" | "pageSize">;
+
 type LeadStatusUpdateRow = {
   id: string;
   status: LeadStatus;
@@ -412,6 +414,9 @@ function mapLeadListRow(row: LeadListRow): LeadListItem {
   };
 }
 
+const leadListSelect =
+  "id, place_id, name, rubro_comercial, city, phone_e164, website_url, has_website, rating, reviews_count, score, status, maps_url, whatsapp_url, instagram_url, enrichment_status, updated_at";
+
 export async function createSearchRun(query: string, city: string, rubroComercial: string) {
   const supabase = createServiceRoleClient();
 
@@ -499,10 +504,7 @@ export async function listLeads(input: ListLeadsInput): Promise<ListLeadsResult>
 
   let query = supabase
     .from("leads")
-    .select(
-      "id, place_id, name, rubro_comercial, city, phone_e164, website_url, has_website, rating, reviews_count, score, status, maps_url, whatsapp_url, instagram_url, enrichment_status, updated_at",
-      { count: "exact" },
-    )
+    .select(leadListSelect, { count: "exact" })
     .order(input.sortBy, { ascending: input.sortDir === "asc" })
     .range(from, to);
 
@@ -518,10 +520,7 @@ export async function listLeads(input: ListLeadsInput): Promise<ListLeadsResult>
     const phoneCandidates = buildPhoneSearchCandidates(input.phone);
 
     if (phoneCandidates.length > 0) {
-      const phoneOrFilter = phoneCandidates
-        .map((candidate) => `phone_e164.ilike.%${candidate}%`)
-        .join(",");
-
+      const phoneOrFilter = phoneCandidates.map((candidate) => `phone_e164.ilike.%${candidate}%`).join(",");
       query = query.or(phoneOrFilter);
     }
   }
@@ -561,6 +560,54 @@ export async function listClients(input: Omit<ListLeadsInput, "excludeStatus">):
     ...input,
     excludeStatus: "nuevo",
   });
+}
+
+export async function listAllLeads(input: ListAllLeadsInput): Promise<LeadListItem[]> {
+  const pageSize = 500;
+  const firstPage = await listLeads({
+    ...input,
+    page: 1,
+    pageSize,
+  });
+
+  const rows = [...firstPage.rows];
+  const totalPages = Math.max(1, Math.ceil(firstPage.total / pageSize));
+
+  for (let page = 2; page <= totalPages; page += 1) {
+    const nextPage = await listLeads({
+      ...input,
+      page,
+      pageSize,
+    });
+
+    rows.push(...nextPage.rows);
+  }
+
+  return rows;
+}
+
+export async function listAllClients(input: Omit<ListAllLeadsInput, "excludeStatus">): Promise<LeadListItem[]> {
+  const pageSize = 500;
+  const firstPage = await listClients({
+    ...input,
+    page: 1,
+    pageSize,
+  });
+
+  const rows = [...firstPage.rows];
+  const totalPages = Math.max(1, Math.ceil(firstPage.total / pageSize));
+
+  for (let page = 2; page <= totalPages; page += 1) {
+    const nextPage = await listClients({
+      ...input,
+      page,
+      pageSize,
+    });
+
+    rows.push(...nextPage.rows);
+  }
+
+  return rows;
 }
 
 export async function updateLeadStatus(

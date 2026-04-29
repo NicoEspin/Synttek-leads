@@ -15,17 +15,91 @@ export type ServerConfig = {
   rateLimitMax: number;
 };
 
-function parseOrigins(raw: string): string[] {
+type OriginMatcher = (origin: string) => boolean;
+
+function normalizeConfiguredOrigin(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("//")) {
+    return `https:${trimmed}`;
+  }
+
+  return trimmed;
+}
+
+function normalizeExactOrigin(value: string): string {
+  const url = new URL(value);
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`Unsupported CORS origin protocol: ${value}`);
+  }
+
+  if (url.pathname !== "/" || url.search || url.hash) {
+    throw new Error(`CORS origins must not include paths, query params, or fragments: ${value}`);
+  }
+
+  return `${url.protocol}//${url.host.toLowerCase()}`;
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildWildcardOriginMatcher(pattern: string): OriginMatcher {
+  const wildcardMatch = pattern.match(/^(https?):\/\/([^/?#]+)\/?$/i);
+
+  if (!wildcardMatch) {
+    throw new Error(`Invalid CORS origin pattern: ${pattern}`);
+  }
+
+  const [, protocol, hostPattern] = wildcardMatch;
+
+  if (!hostPattern.includes("*")) {
+    throw new Error(`Wildcard CORS origin pattern must include '*': ${pattern}`);
+  }
+
+  if (hostPattern === "*") {
+    throw new Error("Wildcard CORS origin pattern cannot match every host");
+  }
+
+  const hostRegex = new RegExp(`^${escapeRegex(hostPattern.toLowerCase()).replace(/\*/g, "[^.]*")}$`);
+  const normalizedProtocol = `${protocol.toLowerCase()}:`;
+
+  return (origin: string) => {
+    try {
+      const url = new URL(origin);
+
+      if (url.protocol !== normalizedProtocol) {
+        return false;
+      }
+
+      return hostRegex.test(url.host.toLowerCase());
+    } catch {
+      return false;
+    }
+  };
+}
+
+export function parseOrigins(raw: string): string[] {
   return raw
     .split(",")
-    .map((origin) => origin.trim())
+    .map(normalizeConfiguredOrigin)
     .filter(Boolean);
 }
 
-function toOriginMatcher(pattern: string) {
-  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-  const regex = new RegExp(`^${escaped}$`);
-  return (origin: string) => regex.test(origin);
+export function toOriginMatcher(pattern: string): OriginMatcher {
+  if (pattern.includes("*")) {
+    return buildWildcardOriginMatcher(pattern);
+  }
+
+  const normalizedPattern = normalizeExactOrigin(pattern);
+  return (origin: string) => {
+    try {
+      return normalizeExactOrigin(origin) === normalizedPattern;
+    } catch {
+      return false;
+    }
+  };
 }
 
 export function getServerConfig(): ServerConfig {

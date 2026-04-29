@@ -17,7 +17,7 @@ npm run dev
 ## API env vars
 
 - `API_PORT` (default `4000`)
-- `API_CORS_ORIGINS` (comma-separated, default `http://localhost:3000`)
+- `API_CORS_ORIGINS` (comma-separated exact origins or constrained host patterns like `https://synttek-leads-frontend-*.vercel.app`, default `http://localhost:3000`)
 - `API_RATE_LIMIT_WINDOW_MS` (default `60000`)
 - `API_RATE_LIMIT_MAX` (default `120`)
 - `CRON_SECRET` (optional, required for protected internal/enrichment routes in production)

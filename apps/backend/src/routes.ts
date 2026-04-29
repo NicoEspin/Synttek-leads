@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { runDynamicEnrichment } from "./lib/enrichment/run-dynamic-enrichment";
 import { runStaticEnrichment } from "./lib/enrichment/run-static-enrichment";
+import { buildLeadCsvExport, buildLeadPdfExport } from "./lib/leads/export";
 import {
   createLeadNote,
   createSearchRun,
@@ -11,6 +12,8 @@ import {
   getClientsOverview,
   getLeadDetail,
   getLeadMetricsOverview,
+  listAllClients,
+  listAllLeads,
   listClients,
   listLeadNotes,
   listLeads,
@@ -31,13 +34,10 @@ import { sendInternalError, sendZodError } from "./utils";
 const leadSortBy = ["updated_at", "score", "reviews_count", "created_at"] as const;
 const sortDirection = ["asc", "desc"] as const;
 
-const listLeadsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(50).default(12),
+const listFilterFields = {
   city: z.string().trim().min(1).optional(),
   rubroComercial: z.string().trim().min(1).optional(),
   phone: z.string().trim().min(1).optional(),
-  status: z.enum(leadStatuses).optional(),
   onlyWithoutWebsite: z
     .enum(["true", "false"])
     .optional()
@@ -48,26 +48,36 @@ const listLeadsQuerySchema = z.object({
     .transform((value) => value === "true"),
   sortBy: z.enum(leadSortBy).default("updated_at"),
   sortDir: z.enum(sortDirection).default("desc"),
+} as const;
+
+const listClientFilterFields = {
+  ...listFilterFields,
+  status: z.enum(crmLeadStatuses).optional(),
+} as const;
+
+const listLeadFilterFields = {
+  ...listFilterFields,
+  status: z.enum(leadStatuses).optional(),
+} as const;
+
+const paginationFields = {
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(12),
+} as const;
+
+const listLeadsQuerySchema = z.object({
+  ...paginationFields,
+  ...listLeadFilterFields,
 });
 
 const listClientsQuerySchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(50).default(12),
-  city: z.string().trim().min(1).optional(),
-  rubroComercial: z.string().trim().min(1).optional(),
-  phone: z.string().trim().min(1).optional(),
-  status: z.enum(crmLeadStatuses).optional(),
-  onlyWithoutWebsite: z
-    .enum(["true", "false"])
-    .optional()
-    .transform((value) => value === "true"),
-  onlyWithPhone: z
-    .enum(["true", "false"])
-    .optional()
-    .transform((value) => value === "true"),
-  sortBy: z.enum(leadSortBy).default("updated_at"),
-  sortDir: z.enum(sortDirection).default("desc"),
+  ...paginationFields,
+  ...listClientFilterFields,
 });
+
+const exportLeadsQuerySchema = z.object(listLeadFilterFields);
+
+const exportClientsQuerySchema = z.object(listClientFilterFields);
 
 const leadIdParamsSchema = z.object({
   leadId: z.string().uuid(),
@@ -117,6 +127,39 @@ function isNonNullableLead<T>(value: T | null): value is T {
   return value !== null;
 }
 
+function pickListQueryPayload(query: Request["query"]) {
+  return {
+    page: query.page,
+    pageSize: query.pageSize,
+    city: query.city,
+    rubroComercial: query.rubroComercial,
+    phone: query.phone,
+    status: query.status,
+    onlyWithoutWebsite: query.onlyWithoutWebsite,
+    onlyWithPhone: query.onlyWithPhone,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  };
+}
+
+function pickExportQueryPayload(query: Request["query"]) {
+  return {
+    city: query.city,
+    rubroComercial: query.rubroComercial,
+    phone: query.phone,
+    status: query.status,
+    onlyWithoutWebsite: query.onlyWithoutWebsite,
+    onlyWithPhone: query.onlyWithPhone,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  };
+}
+
+function buildExportFilename(prefix: string, extension: "csv" | "pdf") {
+  const stamp = new Date().toISOString().slice(0, 10);
+  return `${prefix}-${stamp}.${extension}`;
+}
+
 function isAuthorizedInternalRequest(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret) {
@@ -152,18 +195,7 @@ export function buildV1Router() {
 
   router.get("/leads", async (req, res) => {
     try {
-      const payload = listLeadsQuerySchema.parse({
-        page: req.query.page,
-        pageSize: req.query.pageSize,
-        city: req.query.city,
-        rubroComercial: req.query.rubroComercial,
-        phone: req.query.phone,
-        status: req.query.status,
-        onlyWithoutWebsite: req.query.onlyWithoutWebsite,
-        onlyWithPhone: req.query.onlyWithPhone,
-        sortBy: req.query.sortBy,
-        sortDir: req.query.sortDir,
-      });
+      const payload = listLeadsQuerySchema.parse(pickListQueryPayload(req.query));
 
       const result = await listLeads({
         page: payload.page,
@@ -196,18 +228,7 @@ export function buildV1Router() {
 
   router.get("/clients", async (req, res) => {
     try {
-      const payload = listClientsQuerySchema.parse({
-        page: req.query.page,
-        pageSize: req.query.pageSize,
-        city: req.query.city,
-        rubroComercial: req.query.rubroComercial,
-        phone: req.query.phone,
-        status: req.query.status,
-        onlyWithoutWebsite: req.query.onlyWithoutWebsite,
-        onlyWithPhone: req.query.onlyWithPhone,
-        sortBy: req.query.sortBy,
-        sortDir: req.query.sortDir,
-      });
+      const payload = listClientsQuerySchema.parse(pickListQueryPayload(req.query));
 
       const result = await listClients({
         page: payload.page,
@@ -235,6 +256,180 @@ export function buildV1Router() {
       }
 
       return sendInternalError(res, "Failed to list clients", error);
+    }
+  });
+
+  router.get("/leads/export.csv", async (req, res) => {
+    try {
+      const payload = exportLeadsQuerySchema.parse(pickExportQueryPayload(req.query));
+      const rows = await listAllLeads({
+        city: payload.city,
+        rubroComercial: payload.rubroComercial,
+        phone: payload.phone,
+        status: payload.status ?? "nuevo",
+        onlyWithoutWebsite: payload.onlyWithoutWebsite,
+        onlyWithPhone: payload.onlyWithPhone,
+        sortBy: payload.sortBy,
+        sortDir: payload.sortDir,
+      });
+
+      const body = buildLeadCsvExport({
+        generatedAt: new Date().toISOString(),
+        pipeline: "leads",
+        filters: {
+          city: payload.city,
+          rubroComercial: payload.rubroComercial,
+          phone: payload.phone,
+          status: payload.status ?? "nuevo",
+          onlyWithoutWebsite: payload.onlyWithoutWebsite,
+          onlyWithPhone: payload.onlyWithPhone,
+          sortBy: payload.sortBy,
+          sortDir: payload.sortDir,
+        },
+        rows,
+      });
+
+      res.setHeader("content-type", "text/csv; charset=utf-8");
+      res.setHeader("content-disposition", `attachment; filename="${buildExportFilename("synttek-leads", "csv")}"`);
+      res.setHeader("cache-control", "no-store");
+      return res.status(200).send(body);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return sendZodError(res, "Invalid query params", error);
+      }
+
+      return sendInternalError(res, "Failed to export leads CSV", error);
+    }
+  });
+
+  router.get("/leads/export.pdf", async (req, res) => {
+    try {
+      const payload = exportLeadsQuerySchema.parse(pickExportQueryPayload(req.query));
+      const generatedAt = new Date().toISOString();
+      const rows = await listAllLeads({
+        city: payload.city,
+        rubroComercial: payload.rubroComercial,
+        phone: payload.phone,
+        status: payload.status ?? "nuevo",
+        onlyWithoutWebsite: payload.onlyWithoutWebsite,
+        onlyWithPhone: payload.onlyWithPhone,
+        sortBy: payload.sortBy,
+        sortDir: payload.sortDir,
+      });
+
+      const body = await buildLeadPdfExport({
+        generatedAt,
+        pipeline: "leads",
+        filters: {
+          city: payload.city,
+          rubroComercial: payload.rubroComercial,
+          phone: payload.phone,
+          status: payload.status ?? "nuevo",
+          onlyWithoutWebsite: payload.onlyWithoutWebsite,
+          onlyWithPhone: payload.onlyWithPhone,
+          sortBy: payload.sortBy,
+          sortDir: payload.sortDir,
+        },
+        rows,
+      });
+
+      res.setHeader("content-type", "application/pdf");
+      res.setHeader("content-disposition", `attachment; filename="${buildExportFilename("synttek-leads-report", "pdf")}"`);
+      res.setHeader("cache-control", "no-store");
+      return res.status(200).send(body);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return sendZodError(res, "Invalid query params", error);
+      }
+
+      return sendInternalError(res, "Failed to export leads PDF", error);
+    }
+  });
+
+  router.get("/clients/export.csv", async (req, res) => {
+    try {
+      const payload = exportClientsQuerySchema.parse(pickExportQueryPayload(req.query));
+      const rows = await listAllClients({
+        city: payload.city,
+        rubroComercial: payload.rubroComercial,
+        phone: payload.phone,
+        status: payload.status,
+        onlyWithoutWebsite: payload.onlyWithoutWebsite,
+        onlyWithPhone: payload.onlyWithPhone,
+        sortBy: payload.sortBy,
+        sortDir: payload.sortDir,
+      });
+
+      const body = buildLeadCsvExport({
+        generatedAt: new Date().toISOString(),
+        pipeline: "clients",
+        filters: {
+          city: payload.city,
+          rubroComercial: payload.rubroComercial,
+          phone: payload.phone,
+          status: payload.status,
+          onlyWithoutWebsite: payload.onlyWithoutWebsite,
+          onlyWithPhone: payload.onlyWithPhone,
+          sortBy: payload.sortBy,
+          sortDir: payload.sortDir,
+        },
+        rows,
+      });
+
+      res.setHeader("content-type", "text/csv; charset=utf-8");
+      res.setHeader("content-disposition", `attachment; filename="${buildExportFilename("synttek-clients", "csv")}"`);
+      res.setHeader("cache-control", "no-store");
+      return res.status(200).send(body);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return sendZodError(res, "Invalid query params", error);
+      }
+
+      return sendInternalError(res, "Failed to export clients CSV", error);
+    }
+  });
+
+  router.get("/clients/export.pdf", async (req, res) => {
+    try {
+      const payload = exportClientsQuerySchema.parse(pickExportQueryPayload(req.query));
+      const generatedAt = new Date().toISOString();
+      const rows = await listAllClients({
+        city: payload.city,
+        rubroComercial: payload.rubroComercial,
+        phone: payload.phone,
+        status: payload.status,
+        onlyWithoutWebsite: payload.onlyWithoutWebsite,
+        onlyWithPhone: payload.onlyWithPhone,
+        sortBy: payload.sortBy,
+        sortDir: payload.sortDir,
+      });
+
+      const body = await buildLeadPdfExport({
+        generatedAt,
+        pipeline: "clients",
+        filters: {
+          city: payload.city,
+          rubroComercial: payload.rubroComercial,
+          phone: payload.phone,
+          status: payload.status,
+          onlyWithoutWebsite: payload.onlyWithoutWebsite,
+          onlyWithPhone: payload.onlyWithPhone,
+          sortBy: payload.sortBy,
+          sortDir: payload.sortDir,
+        },
+        rows,
+      });
+
+      res.setHeader("content-type", "application/pdf");
+      res.setHeader("content-disposition", `attachment; filename="${buildExportFilename("synttek-clients-report", "pdf")}"`);
+      res.setHeader("cache-control", "no-store");
+      return res.status(200).send(body);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return sendZodError(res, "Invalid query params", error);
+      }
+
+      return sendInternalError(res, "Failed to export clients PDF", error);
     }
   });
 

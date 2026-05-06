@@ -25,6 +25,7 @@ import type {
   ListLeadsResponse,
   SearchLeadsResponse,
 } from "@/features/leads/types";
+import { buildLeadResearchPrompt } from "@/lib/leads/build-lead-research-prompt";
 import { crmLeadStatuses, leadStatuses, type LeadStatus } from "@/lib/leads/status";
 import { buildWhatsappChatUrl } from "@/lib/leads/whatsapp";
 
@@ -263,6 +264,48 @@ export function LeadsSearchView() {
 
       return next;
     });
+  }
+
+  async function copyTextToClipboard(value: string) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+
+    document.body.append(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+
+    const copied = document.execCommand("copy");
+    textarea.remove();
+
+    if (!copied) {
+      throw new Error("Clipboard no disponible");
+    }
+  }
+
+  async function onCopyResearchPrompt(lead: LeadListItem) {
+    markLeadAsInteracted(lead.id);
+    setError(null);
+
+    try {
+      const prompt = buildLeadResearchPrompt(lead);
+      await copyTextToClipboard(prompt);
+      setEnrichmentMessage(`Prompt de investigacion copiado para ${lead.businessName}`);
+
+      if (activeTab === "leads") {
+        setLeadViewed(lead.id, true);
+      }
+    } catch {
+      setError("No se pudo copiar el prompt");
+    }
   }
 
   async function onSearchSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -1003,6 +1046,17 @@ export function LeadsSearchView() {
                               className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
                             >
                               Notas
+                            </button>
+
+                            <button
+                              type="button"
+                              title="Copiar prompt para investigar este lead con IA"
+                              onClick={() => {
+                                void onCopyResearchPrompt(lead);
+                              }}
+                              className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                            >
+                              Copiar prompt
                             </button>
 
                             <Link
